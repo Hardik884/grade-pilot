@@ -1,0 +1,7 @@
+data/episodes/
+data/*.db
+data/*.parquet
+docs/screenshots/
+__pycache__/
+.venv/
+*.pyc

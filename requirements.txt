@@ -1,0 +1,19 @@
+# Grade Change Intelligence - Python 3.11+
+# Install:  python -m venv .venv && .venv/Scripts/python.exe -m pip install -r requirements.txt
+
+# Core numerics / data
+numpy==2.5.1
+pandas==3.0.5
+pyarrow==24.0.0
+scipy==1.18.0
+
+# Modelling
+scikit-learn==1.9.0
+statsmodels==0.14.6
+
+# Dashboard
+streamlit==1.60.0
+plotly==6.9.0
+
+# Test
+pytest==9.1.1
