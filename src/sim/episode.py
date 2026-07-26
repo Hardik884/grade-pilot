@@ -46,11 +46,17 @@ from src.sim.machine import (
     basis_weight_g_m2,
     first_order_step,
 )
-from src.sim.units import validate_ranges
+from src.sim.units import BW_RATE_LIMIT_G_M2_MIN, validate_ranges
 
 __all__ = ["SimConfig", "PHASES", "SERIES_COLUMNS", "simulate_episode", "episode_id"]
 
 PHASES: tuple[str, ...] = ("pre", "ramp", "settle", "steady")
+
+#: Loop lag the nominal basis-weight tuning is quoted against, in seconds: roughly
+#: theta + one scan period + tau_wet at the middle of the speed catalogue. Gains are
+#: scheduled relative to this, so a grade running slower than nominal gets a
+#: proportionally softer loop rather than an unstable one.
+LAG_REF_SEC: float = 85.0
 
 #: Exact column order of ``series.parquet``.
 SERIES_COLUMNS: tuple[str, ...] = (
@@ -95,6 +101,11 @@ class SimConfig:
     #: in the catalogue cannot be taken inside 15 minutes without making broke.
     ramp_dev_budget: float = 0.009
     speed_rate_use_frac: float = 0.85
+    #: Share of the 15 g/m2/min plausibility limit the *setpoint* ramp may plan for.
+    #: The margin is not decoration: the measurement overshoots the schedule during
+    #: the settle, so a ramp planned at the limit breaches it. The widest transition
+    #: in the catalogue (G01 -> G11, 115 g/m2) needs ~11 minutes at this fraction.
+    bw_rate_use_frac: float = 0.65
     min_ramp_sec: float = 180.0
     max_ramp_sec: float = 900.0
     #: Calibrated so the dataset lands mid-band on the required 25-45% off-spec
@@ -235,9 +246,17 @@ def simulate_episode(
         if fx.ff_speed_gain is not None
         else float(np.clip(rng.normal(0.992, 0.006), 0.980, 1.0))
     )
+    # Lag scheduling on the basis-weight loop. A PI controller around a dead time is
+    # stable only while its gain is small relative to that dead time, so a gain fixed
+    # across the catalogue is tuned for one speed and wrong everywhere else: the
+    # slowest grade (505 m/min) carries roughly three times the loop lag of the
+    # fastest, and an aggressive-loop fault that merely overshoots at 1400 m/min
+    # diverges there. Kc ~ 1/lag and Ti ~ lag is the standard dead-time relation and
+    # keeps the fault's severity comparable across grades instead of speed-dependent.
+    lag_ratio = lag_nom_sec / LAG_REF_SEC
     tuning = ControllerTuning(
-        kp_bw_frac=float(rng.uniform(0.38, 0.55)) * fx.kp_bw_scale,
-        ti_bw_sec=float(rng.uniform(105.0, 155.0)) * fx.ti_bw_scale,
+        kp_bw_frac=float(rng.uniform(0.38, 0.55)) * fx.kp_bw_scale / lag_ratio,
+        ti_bw_sec=float(rng.uniform(105.0, 155.0)) * fx.ti_bw_scale * lag_ratio,
         kp_ash_frac=float(rng.uniform(0.20, 0.32)),
         ti_ash_sec=float(rng.uniform(190.0, 260.0)),
         kp_moist_frac=float(rng.uniform(0.24, 0.38)),

@@ -20,6 +20,8 @@ from numpy.typing import ArrayLike, NDArray
 __all__ = [
     "RANGES",
     "VarRange",
+    "BW_RATE_LIMIT_G_M2_MIN",
+    "SPEED_RATE_LIMIT_M_MIN_MIN",
     "m3_h_to_L_min",
     "L_min_to_m3_h",
     "transport_delay_sec",
@@ -61,6 +63,14 @@ RANGES: dict[str, VarRange] = {
     "speed": VarRange(400.0, 1800.0, "m/min"),
     "trim": VarRange(3.0, 10.0, "m"),
 }
+
+
+#: Maximum physically plausible rates of change, from the ``papermaking-process``
+#: plausibility gate. Canonical here rather than in the gate itself: the simulator
+#: has to *plan* transitions that respect them, and the gate then checks the result
+#: against the same numbers.
+BW_RATE_LIMIT_G_M2_MIN: float = 15.0
+SPEED_RATE_LIMIT_M_MIN_MIN: float = 100.0
 
 
 class RangeViolation(ValueError):
