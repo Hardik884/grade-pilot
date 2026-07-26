@@ -37,9 +37,12 @@ a different statistic.
 ## The constraint filter has not been exercised by real data
 
 The filter that removes recipe-limit and actuator-rate violations before scoring is the
-system's principal safety property, and in this dataset **it almost never has anything to
-reject**. The generated episodes operate comfortably inside their limits by construction,
-because the grade catalogue is built to leave at least 15% headroom on every actuator.
+system's principal safety property, and in this dataset **it never has anything to
+reject**. Running the advisor across all 300 episodes issues 67 recommendations from
+**268 generated candidates, of which 0 were discarded by the constraint filter** — every
+candidate passed both the recipe-limit and actuator-rate checks on its own merits. The
+generated episodes operate comfortably inside their limits by construction, because the
+grade catalogue is built to leave at least 15% headroom on every actuator.
 
 It is verified only by an adversarial test that artificially tightens the limits until
 candidates become infeasible, and confirms none survive to scoring. That test proves the

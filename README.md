@@ -8,6 +8,25 @@ before the operator can see it, recommends a constrained setpoint move to avoid 
 attaches a traceable evidence card to every number it shows. It does not replace the
 controller and never writes a setpoint — it advises.
 
+## Evaluated against the five criteria
+
+Each row states a measured fact and links to where it is derived. Every number comes from
+300 episodes at seed 42; predictions are made from the first 90 s of each transition and
+scored on 60 held-out episodes containing 23 real breaches.
+
+| Criterion | Proof point | Detail |
+|---|---|---|
+| **Prediction accuracy** | Catches deviations before they exceed limits in **18 of 23** real breaches; the naive current-deviation rule catches **3 of 23** (recall 0.783 vs 0.130) | [RESULTS.md](docs/RESULTS.md#breach-prediction-from-90-s-of-data) |
+| **Process optimization** | Across **67 issued recommendations**, forecast peak deviation falls from a median **4.13% to 1.85%** and **67 of 67** are brought back inside the ±2.5% band | [RESULTS.md](docs/RESULTS.md#what-the-advisor-actually-does) |
+| **Explainability** | **All 67 cards carry exactly 5 weighted sources summing to 1.000**; narration is machine-validated so every numeral it prints must appear in the card | [RESULTS.md](docs/RESULTS.md#explainability-is-enforced-not-promised) |
+| **Usability** | Working Flask dashboard; every card offers Accept/Reject with a structured reason code feeding trust calibration and an avoided-broke figure in tonnes | [screenshots](#what-it-looks-like) |
+| **Historical-data use** | Case-based retrieval returns **k = 9** past transitions split by outcome; lagged discovery over **300 episodes** recovered the correct variable ordering and timing without being told it | [RESULTS.md](docs/RESULTS.md#impact-ranking-with-discovered-lags) |
+
+What each of these does *not* establish is written down in
+[docs/LIMITATIONS.md](docs/LIMITATIONS.md) — synthetic data, a directional-only
+stabilisation ranking, and a constraint filter proven by adversarial test rather than by
+naturally binding limits.
+
 ## The headline result
 
 **The naive baseline catches 3 of 23 real breaches. This system catches 18 of 23.**

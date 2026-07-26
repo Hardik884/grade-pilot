@@ -58,6 +58,51 @@ report prints `MODEL IS DOING TOO MUCH - check physics path` rather than quietly
 reporting a good score. Residual mean absolute error is 1.097% with standard deviation
 1.376%.
 
+## What the advisor actually does
+
+The forecast is only half the system; the other half is the constrained move it proposes.
+Running the advisor across all 300 episodes through the dashboard's own code path issues
+**67 recommendations** — it stays silent on the rest, which is the correct behaviour when
+no breach is forecast.
+
+| Quantity | Result |
+|---|---|
+| Forecast peak deviation if left alone | median **4.13%** (mean 4.08%) |
+| Forecast peak deviation with the move | median **1.85%** (mean 1.76%) |
+| Reduction | median **57.4%**, shallower in **67 of 67** |
+| Forecast excursions returned inside the ±2.5% band | **67 of 67** |
+| Model-estimated stabilisation gain | median **66 s**, positive in 58 of 65 |
+
+Two caveats belong with these numbers rather than in a footnote. The stabilisation gain
+is derived from the stabilisation model, which **reaches no significance at p < 0.05**
+(see below) — it is directional only. And the peak-deviation figures are the model's own
+counterfactual, not a measured outcome: they compare the forecast with the move against
+the forecast without it, both from the same predictor.
+
+Every move is constraint-filtered before scoring. Across those 67 cards, **268 candidates
+were generated and 0 were discarded by the filter** — all of them passed the recipe-limit
+and actuator-rate checks unaided. That is a limitation, not a strength, and it is recorded
+as one in [LIMITATIONS.md](LIMITATIONS.md): the filter is proven by an adversarial test,
+not by naturally binding data.
+
+## Explainability is enforced, not promised
+
+Two properties are checked on every card the system produces rather than asserted in a
+design document:
+
+- **Five weighted sources, summing to 1.000.** Across all 67 issued cards the observed
+  source count is exactly 5 and the observed weight sum is exactly 1.0 — no card was
+  produced with a missing source or an unnormalised mix. A representative split is
+  physics 0.395, model 0.241, causal 0.168, recipe 0.104, historical 0.092.
+- **Narration cannot introduce a number.** `validate_narration` extracts every numeral
+  from the generated sentence and rejects it unless that numeral appears in the card.
+  It is enforced in the card-assembly path in `src/advisor/evidence.py`, not left to the
+  caller, and is covered by tests including a tampered-narration case.
+
+The gray-box split is asserted the same way: physics carries **67.4%** of the answer and
+the residual **32.6%**, and the report fails loudly with
+`MODEL IS DOING TOO MUCH - check physics path` if the learned term ever exceeds 40%.
+
 ## Impact ranking with discovered lags
 
 Spearman-style association between each manipulated variable and measured basis weight,
@@ -171,6 +216,14 @@ with the lowest cut point whose *training* precision still cleared 0.6. Mean rec
 from 0.800 to 0.945, but mean test precision fell to 0.503, and test precision landed
 below the 0.6 floor in **15 of 15 splits** — the constraint held on train and did not
 survive out of sample. Rejected.
+
+Both were re-run against the current feature set before submission, and both failed
+again. The sweep produced six cells beating the shipped recall on the seed-42 split
+(0.826 vs 0.783), but across 15 splits the two strongest were **worse** than shipped:
+mean recall 0.754 and 0.762 against 0.800, better on only 2 of 15 splits each. The
+recall-targeted threshold reached mean recall 0.960 but mean precision 0.494, clearing
+the 0.6 floor in **1 of 15 splits**. The shipped configuration
+(200 / 3 / 0.05, accuracy-maximising threshold) was kept unchanged.
 
 Both experiments were run out-of-tree; the residual model's hyperparameters and decision
 rule are unchanged.
