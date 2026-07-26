@@ -11,9 +11,9 @@ scipy==1.18.0
 scikit-learn==1.9.0
 statsmodels==0.14.6
 
-# Dashboard
-streamlit==1.60.0
-plotly==6.9.0
+# Dashboard - static HTML/CSS/JS over a thin Flask API, Chart.js from CDN with a
+# vendored fallback in src/ui/static/vendor. No build step, no node.
+flask==3.1.2
 
 # Test
 pytest==9.1.1

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Grade change intelligence</title>
+<link rel="icon" href="data:," />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="chrome" id="top">
+  <div class="chrome-row">
+    <div>
+      <h1>Grade change intelligence</h1>
+      <p class="sub">Advisory layer over the MD multivariable MPC. Nothing auto-applies &mdash; the operator is the actuator.</p>
+    </div>
+    <p class="replay-badge" role="note">Replay of a recorded historical transition. Not a live feed.</p>
+  </div>
+
+  <div class="chrome-row controls">
+    <label class="field">
+      <span>Episode</span>
+      <select id="episode-select" aria-label="Episode to replay"></select>
+    </label>
+
+    <div class="btn-group" role="group" aria-label="Replay controls">
+      <button type="button" id="btn-play" aria-pressed="false">Play</button>
+      <button type="button" id="btn-step-back" aria-label="Step back 5 seconds">&minus;5 s</button>
+      <button type="button" id="btn-step">Step +5 s</button>
+      <button type="button" id="btn-reset">Reset</button>
+    </div>
+
+    <label class="field grow">
+      <span>Replay position <output id="t-readout">t = 0 s</output></span>
+      <input type="range" id="t-slider" min="0" max="0" step="5" value="0"
+             aria-label="Replay position in seconds from transition start" />
+    </label>
+  </div>
+
+  <div class="status" id="status">
+    <span class="risk-dot" id="risk-dot" data-risk="ok" aria-hidden="true"></span>
+    <p class="status-line" id="status-line">Loading episode&hellip;</p>
+    <span class="status-meta" id="status-meta"></span>
+  </div>
+</header>
+
+<main>
+
+  <section class="panel" aria-labelledby="h-timeline">
+    <div class="panel-head">
+      <h2 id="h-timeline">Transition timeline</h2>
+      <p class="panel-note" id="timeline-note">Measured basis weight, forecast trajectory with uncertainty cone, spec band at &plusmn;2.5% of setpoint.</p>
+    </div>
+    <div class="chart-box tall"><canvas id="bw-chart" aria-label="Basis weight over time" role="img"></canvas></div>
+    <ul class="legend" id="bw-legend">
+      <li><span class="swatch line-measured"></span>Measured (scanner)</li>
+      <li><span class="swatch line-setpoint"></span>Setpoint</li>
+      <li><span class="swatch line-predicted"></span>Forecast</li>
+      <li><span class="swatch fill-uncertainty"></span>Uncertainty</li>
+      <li><span class="swatch fill-spec"></span>In spec &plusmn;2.5%</li>
+      <li><span class="swatch dot-risk"></span>Forecast outside band</li>
+      <li><span class="swatch dot-bad"></span>Measured off spec</li>
+    </ul>
+  </section>
+
+  <section class="panel" aria-labelledby="h-lag">
+    <div class="panel-head">
+      <h2 id="h-lag">What you are looking at is already old</h2>
+    </div>
+    <div class="callout" id="lag-callout">
+      <p class="callout-lead" id="lag-lead">&mdash;</p>
+      <dl class="lag-parts" id="lag-parts"></dl>
+      <p class="callout-foot" id="lag-foot"></p>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-impact">
+    <div class="panel-head">
+      <h2 id="h-impact">Impact ranking</h2>
+      <div class="head-actions">
+        <button type="button" id="btn-lag-toggle" aria-pressed="true">Showing: lagged</button>
+      </div>
+    </div>
+    <p class="panel-note" id="impact-note">&mdash;</p>
+    <div class="chart-box"><canvas id="impact-chart" aria-label="Variable impact on basis weight deviation" role="img"></canvas></div>
+    <p class="panel-note subtle" id="impact-foot"></p>
+  </section>
+
+  <section class="panel" id="suggestion-panel" aria-labelledby="h-suggest" aria-live="polite">
+    <div class="panel-head">
+      <h2 id="h-suggest">Suggestion</h2>
+      <span class="tag" id="card-id-tag"></span>
+    </div>
+
+    <div id="suggestion-empty" class="empty">No suggestion at this replay position.</div>
+
+    <div id="suggestion-body" hidden>
+      <p class="claim" id="claim-statement"></p>
+      <p class="action" id="action-line"></p>
+      <dl class="kv" id="action-detail"></dl>
+
+      <div class="narration">
+        <h3>Narration</h3>
+        <p id="narration-text"></p>
+        <p class="panel-note subtle">Rephrased from the evidence card only. Validated: every numeral above appears in the card.</p>
+      </div>
+
+      <div class="evidence">
+        <h3>Evidence card <span class="weights" id="weight-sum"></span></h3>
+        <div id="source-chips" class="chips"></div>
+      </div>
+
+      <details class="retrieved" id="retrieved">
+        <summary>Retrieved episodes <span id="retrieved-count"></span></summary>
+        <div id="retrieved-body"></div>
+      </details>
+
+      <details class="retrieved" id="constraints">
+        <summary>Constraint filter</summary>
+        <dl class="kv" id="constraints-body"></dl>
+      </details>
+
+      <div class="decision">
+        <div class="decision-buttons">
+          <button type="button" id="btn-accept" class="decision-btn">Accept</button>
+          <button type="button" id="btn-reject" class="decision-btn">Reject</button>
+        </div>
+        <div class="reject-reason" id="reject-reason" hidden>
+          <label class="field">
+            <span>Reason for rejecting</span>
+            <select id="reason-select"></select>
+          </label>
+          <button type="button" id="btn-reject-confirm">Submit rejection</button>
+          <button type="button" id="btn-reject-cancel" class="link">Cancel</button>
+        </div>
+        <p class="confirmation" id="decision-confirm" role="status"></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-history">
+    <div class="panel-head">
+      <h2 id="h-history">Suggestion history</h2>
+      <p class="panel-note">Cards issued this session.</p>
+    </div>
+    <table class="grid" id="history-table">
+      <thead>
+        <tr>
+          <th scope="col">Card ID</th>
+          <th scope="col">Suggestion</th>
+          <th scope="col">Source mix</th>
+          <th scope="col">Decision</th>
+          <th scope="col">Reason code</th>
+        </tr>
+      </thead>
+      <tbody id="history-body">
+        <tr class="empty-row"><td colspan="5">No cards issued yet this session.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel" aria-labelledby="h-trust">
+    <div class="panel-head">
+      <h2 id="h-trust">Trust calibration</h2>
+      <p class="panel-note" id="trust-note">&mdash;</p>
+    </div>
+    <div class="chart-pair">
+      <div class="chart-box"><canvas id="trust-chart" aria-label="Acceptance rate over time" role="img"></canvas></div>
+      <div class="chart-box"><canvas id="source-chart" aria-label="Acceptance rate by dominant source type" role="img"></canvas></div>
+    </div>
+  </section>
+
+  <section class="panel tile-panel" aria-labelledby="h-econ">
+    <div class="panel-head">
+      <h2 id="h-econ">Broke avoided</h2>
+    </div>
+    <div class="tiles">
+      <div class="tile">
+        <p class="tile-label">This transition, if accepted</p>
+        <p class="tile-value" id="econ-episode">&mdash;</p>
+        <p class="tile-unit">tonnes</p>
+      </div>
+      <div class="tile">
+        <p class="tile-label">Session total, accepted</p>
+        <p class="tile-value" id="econ-session">0.00</p>
+        <p class="tile-unit">tonnes</p>
+      </div>
+    </div>
+    <p class="panel-note" id="econ-basis"></p>
+  </section>
+
+</main>
+
+<footer class="chrome">
+  <p id="footer-note">Physics-first gray-box forecast. Every recommendation is constraint-filtered before scoring and carries an evidence card.</p>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+  // Vendored fallback so the deck still renders with no network.
+  if (!window.Chart) {
+    document.write('<script src="vendor/chart.umd.min.js"><\/script>');
+  }
+</script>
+<script src="app.js"></script>
+</body>
+</html>

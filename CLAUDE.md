@@ -52,7 +52,7 @@ docs/          Architecture doc + deck source
 pytest -q                       # test suite
 python -m src.sim.generate --n 300 --out data/episodes    # generate dataset
 python -m tests.physics_check data/episodes               # physical plausibility gate
-streamlit run src/ui/app.py     # dashboard
+python -m src.ui.server         # dashboard on http://127.0.0.1:8000
 ```
 
 ## Working style
