@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "name": "GCI Quality Gate",
+  "description": "After any Python edit under src/ or tests/, runs the deterministic gate: ground-truth leak guard (injected_faults / bw_true outside src/sim/), layering guard (no module imports src.ui), and the pytest suite.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/**/*.py",
+      "tests/**/*.py"
+    ]
+  },
+  "then": {
+    "type": "runCommand",
+    "command": ".venv\\Scripts\\python.exe .kiro\\scripts\\check.py",
+    "timeout": 300
+  }
+}

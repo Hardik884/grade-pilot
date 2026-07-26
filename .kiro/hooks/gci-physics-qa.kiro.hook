@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Physics QA Audit",
+  "description": "Audits a module against the paper machine process reference and the episode data contract. Reports findings as a pass/fail table without editing files.",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Audit a module against the papermaking-process and episode-schema steering references. Audit the module I named in this conversation; if I named none, audit the file in the active editor, and if there is none, ask which module.\n\nCheck and report as a table of findings, each marked pass or fail:\n\n1. Every physical quantity uses the canonical unit and name from the reference.\n2. No hardcoded magic numbers that should come from meta.json machine parameters.\n3. Transport delay is treated as speed-dependent, not a fixed constant.\n4. No module outside src/sim/ reads injected_faults or bw_true.\n5. Any recommendation path filters constraints before scoring, not after.\n6. Episode columns match the contract exactly - no invented names.\n\nReport findings only. Do not edit files."
+  }
+}

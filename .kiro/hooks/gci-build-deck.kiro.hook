@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Build Submission Deck",
+  "description": "Builds the six-slide submission deck from the approved copy and the provided PPTX template, then exports to PDF.",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Build the submission deck.\n\n1. Read `docs/deck-content.md` for the approved slide copy. If it does not exist, stop and ask for it - never invent claims about the solution.\n2. Use the template at `docs/IDEA_Presentation_Format.pptx`. Do not alter the idea detail pointers on each slide.\n3. Maximum six slides including the title slide. Points, diagrams and screenshots only - no paragraphs.\n4. Pull dashboard screenshots from `docs/screenshots/` for the Artifacts slide.\n5. Export to PDF. The portal accepts PDF only.\n6. Verify: no placeholder text remains, no slide overflows, six slides or fewer."
+  }
+}

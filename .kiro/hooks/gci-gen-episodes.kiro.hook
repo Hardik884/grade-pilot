@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Generate Episodes",
+  "description": "Regenerates the synthetic episode dataset and runs the physical plausibility gate, then reports off-spec rate and fault distribution.",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Generate a fresh synthetic episode dataset. Use 300 episodes unless I have told you a different count in this conversation.\n\n1. Run `python -m src.sim.generate --n <count> --out data/episodes --seed 42` using the project venv interpreter.\n2. Run `python -m tests.physics_check data/episodes`.\n3. If the gate fails, report which rule failed and which episodes, then stop. Do not fix the data - the simulator is what needs fixing.\n4. On pass, report: episode count, off-spec rate, mean stabilisation time, and the distribution of injected fault types.\n\nAn off-spec rate outside 25-45% means the simulator is miscalibrated - flag it."
+  }
+}
