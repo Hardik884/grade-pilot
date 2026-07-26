@@ -31,9 +31,21 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.sim.units import RANGES
+from src.sim.machine import basis_weight_g_m2
+from src.sim.units import (
+    BW_RATE_LIMIT_G_M2_MIN,
+    RANGES,
+    SPEED_RATE_LIMIT_M_MIN_MIN,
+)
 
-__all__ = ["RULES", "GateResult", "check_dataset", "main"]
+__all__ = [
+    "RULES",
+    "GateResult",
+    "check_dataset",
+    "main",
+    "mass_balance_lag_sec",
+    "response_travel",
+]
 
 RULES: tuple[str, ...] = (
     "range",
@@ -44,13 +56,18 @@ RULES: tuple[str, ...] = (
     "moisture_steam_sign",
 )
 
-BW_RATE_LIMIT_G_M2_MIN = 15.0
-SPEED_RATE_LIMIT_M_MIN_MIN = 100.0
 RATE_WINDOW_SEC = 60.0
 #: Smallest lag, in seconds, at which basis weight may respond to a manipulated
 #: variable. Anything below this is a zero-lag response.
 MIN_RESPONSE_LAG_SEC = 3.0
 MAX_RESPONSE_LAG_SEC = 240.0
+#: An instantaneous mass-balance fit tighter than this cannot happen on measured
+#: data - scanner noise alone floors the residual well above it. Below it, basis
+#: weight was computed algebraically from the manipulated variables.
+ALGEBRAIC_FIT_RMS_G_M2 = 0.05
+#: Fractional RMS improvement of the best lag over zero lag required before the
+#: lag is considered identifiable at all.
+LAG_IDENTIFIABLE_IMPROVEMENT = 0.20
 
 #: Columns whose ranges are checked. ``bw_true`` is included: it is simulator
 #: ground truth, but an out-of-range ground truth is a simulator bug and this is
@@ -104,40 +121,53 @@ def rolling_rate_per_min(series: pd.Series, window_sec: float = RATE_WINDOW_SEC)
     return out
 
 
-def best_response_lag_sec(
-    bw: pd.Series, driver: pd.Series, max_lag_sec: float = MAX_RESPONSE_LAG_SEC
-) -> float | None:
-    """Lag at which ``bw`` responds most strongly to ``driver``.
+def response_travel(series: pd.Series) -> float:
+    """Peak-to-peak travel of a signal after the transition trigger."""
+    post = series.loc[series.index > 0.0].to_numpy(dtype=float)
+    return float(post.max() - post.min()) if post.size else 0.0
 
-    Both signals are smoothed and differenced over a 30 s span before correlating,
-    which strips the scanner's zero-order-hold staircase and the slow ramp trend and
-    leaves the response. Returns None when the driver does not move enough to
-    identify anything.
+
+def mass_balance_lag_sec(
+    df: pd.DataFrame, machine: dict[str, float], max_lag_sec: float = MAX_RESPONSE_LAG_SEC
+) -> tuple[float, float, float]:
+    """Lag that best explains measured ``bw`` as a delayed mass balance.
+
+    Rebuilds basis weight from the *contemporaneous* manipulated variables and finds
+    the shift that minimises RMS error against the measurement. Returns
+    ``(lag_sec, rms_at_that_lag, rms_at_zero_lag)``.
+
+    This is the discriminator the zero-lag rule needs. A simulator that emitted
+    basis weight as an algebraic function of the manipulated variables scores an
+    exact fit at lag 0; a correct one, carrying the wet-end lag, the transport
+    delay and the scanner traverse, has its optimum tens of seconds out and fits
+    markedly worse at zero.
     """
-    t = bw.index.to_numpy(dtype=float)
+    mb = np.asarray(
+        basis_weight_g_m2(
+            df["stock_flow"],
+            df["stock_cons"],
+            df["filler_flow"],
+            df["speed"],
+            trim_m=machine["trim_m"],
+            retention=machine["retention"],
+            filler_cons_pct=machine["filler_cons_pct"],
+        ),
+        dtype=float,
+    )
+    bw = df["bw"].to_numpy(dtype=float)
+    t = df.index.to_numpy(dtype=float)
     dt = float(np.median(np.diff(t))) if t.size > 1 else 1.0
-    span = max(int(round(30.0 / dt)), 1)
-
-    def prep(s: pd.Series) -> np.ndarray:
-        smooth = s.rolling(span, center=True, min_periods=1).mean().to_numpy(dtype=float)
-        d = np.full(smooth.size, np.nan)
-        d[span:] = smooth[span:] - smooth[:-span]
-        return d
-
-    x, y = prep(driver), prep(bw)
-    ok = np.isfinite(x) & np.isfinite(y)
-    x, y = x[ok], y[ok]
-    if x.size < 120 or x.std() < 1e-9 or y.std() < 1e-9:
-        return None
-    x = (x - x.mean()) / x.std()
-    y = (y - y.mean()) / y.std()
-
-    max_lag = int(round(max_lag_sec / dt))
-    lags = np.arange(0, min(max_lag, x.size // 2))
-    corr = np.array([np.dot(x[: x.size - lag], y[lag:]) / (x.size - lag) for lag in lags])
-    if np.max(np.abs(corr)) < 0.15:
-        return None
-    return float(lags[int(np.argmax(np.abs(corr)))] * dt)
+    best_lag, best_rms, rms_zero = 0.0, float("inf"), float("nan")
+    for k in range(0, int(max_lag_sec / dt) + 1):
+        resid = bw[k:] - mb[: bw.size - k] if k else bw - mb
+        if resid.size == 0:
+            break
+        rms = float(np.sqrt(np.mean(resid**2)))
+        if k == 0:
+            rms_zero = rms
+        if rms < best_rms:
+            best_lag, best_rms = k * dt, rms
+    return best_lag, best_rms, rms_zero
 
 
 # --------------------------------------------------------------------------------------
@@ -161,7 +191,7 @@ def check_dataset(root: str | Path, *, verbose: bool = False) -> GateResult:
 
         _check_ranges(df, name, meta, result)
         _check_rates(df, name, result)
-        _check_zero_lag(df, name, result)
+        _check_zero_lag(df, name, meta["machine"], result)
         _check_ash_mass(df, name, result)
 
         steady = df.loc[df["phase"] == "steady", ["moist", "steam_p", "bw", "speed"]]
@@ -215,15 +245,59 @@ def _check_rates(df: pd.DataFrame, name: str, result: GateResult) -> None:
         )
 
 
-def _check_zero_lag(df: pd.DataFrame, name: str, result: GateResult) -> None:
-    for driver in ("stock_flow", "speed", "filler_flow"):
-        lag = best_response_lag_sec(df["bw"], df[driver])
-        if lag is not None and lag < MIN_RESPONSE_LAG_SEC:
-            result.add(
-                "bw_zero_lag",
-                f"{name}: bw responds to {driver} at {lag:.0f} s "
-                f"(must be >= {MIN_RESPONSE_LAG_SEC:.0f} s)",
-            )
+def _check_zero_lag(
+    df: pd.DataFrame, name: str, machine: dict[str, float], result: GateResult
+) -> None:
+    """Measured basis weight must not be an instantaneous function of the
+    manipulated variables.
+
+    Fit residual against lag, not cross-correlation. Correlation cannot identify
+    this lag for two independent reasons: the loop is closed, so stock flow and
+    basis weight are both driven by the same setpoint ramp and correlate at lag 0
+    by construction; and the scanner is a zero-order hold refreshing every 20-45 s,
+    so a transport delay of order 10 s sits below the resolution of the measured
+    signal whatever estimator is used.
+
+    Known limit, deliberately accepted: on a gentle ramp the lag-induced offset is
+    the ramp rate times the lag, which falls under the scanner noise, so this
+    statistic cannot separate "algebraic plus realistic noise" from correct data.
+    An earlier attempt to force it to - by demanding an identifiable optimum on any
+    large transition - failed four sound episodes whose measurement provably lagged
+    the headbox by 30-40 s. The delay mechanism is pinned directly by unit test
+    instead (``test_transport_delay_tracks_speed``,
+    ``test_bw_true_leads_the_measurement``), and this rule keeps to the gross case
+    it can actually decide.
+    """
+    pre = df.loc[df.index <= 0.0, "bw"]
+    if response_travel(df["bw"]) < max(4.0 * float(pre.std()), 0.5):
+        return  # transition too small to identify any lag against scanner noise
+
+    lag, rms, rms_zero = mass_balance_lag_sec(df, machine)
+
+    # An instantaneous fit this good is not physically reachable: even with no lag
+    # at all, scanner noise alone would leave a residual. It means basis weight was
+    # computed algebraically from the manipulated variables.
+    if rms_zero < ALGEBRAIC_FIT_RMS_G_M2:
+        result.add(
+            "bw_zero_lag",
+            f"{name}: mass balance fits bw at zero lag to {rms_zero:.4f} g/m2, below "
+            f"the {ALGEBRAIC_FIT_RMS_G_M2} g/m2 scanner noise floor. Basis weight is an "
+            f"algebraic function of the manipulated variables - no lag, delay or scanner.",
+        )
+        return
+
+    # Otherwise the lag must be identifiable before it can be judged. On a small
+    # transition the RMS curve rises monotonically from zero with no real optimum,
+    # and its argmin carries no information; only enforce where a genuine optimum
+    # exists to be found.
+    improvement = (rms_zero - rms) / rms_zero if rms_zero > 0 else 0.0
+    if improvement >= LAG_IDENTIFIABLE_IMPROVEMENT and lag < MIN_RESPONSE_LAG_SEC:
+        result.add(
+            "bw_zero_lag",
+            f"{name}: bw is best explained by the mass balance at {lag:.0f} s lag "
+            f"(rms {rms:.3f} vs {rms_zero:.3f} at zero); must be >= "
+            f"{MIN_RESPONSE_LAG_SEC:.0f} s.",
+        )
 
 
 def _check_ash_mass(df: pd.DataFrame, name: str, result: GateResult) -> None:

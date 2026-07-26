@@ -125,11 +125,19 @@ def _apply(
     if name == "overshoot_from_delay":
         # Aggressive loop plus an optimistic delay estimate. The overshoot is not
         # written anywhere: it emerges because the PI is acting on stale sheet.
-        # Severity is self-limiting -- the loop's own stability margin bounds it --
-        # so this one needs no scaling against the transition.
-        fx.kp_bw_scale *= float(rng.uniform(2.4, 3.6))
-        fx.ti_bw_scale *= float(rng.uniform(0.35, 0.55))
-        fx.bw_lead_scale *= float(rng.uniform(0.50, 0.75))
+        #
+        # These bounds were originally set on the assumption that the loop's own
+        # stability margin caps the result. It does not: a PI controller around a
+        # dead time has no bounded overshoot, it simply goes unstable past the
+        # margin. The old range drove basis weight 16-24 g/m2 beyond target -- more
+        # than the entire transition on the narrower grade pairs -- and breached the
+        # 15 g/m2/min plausibility limit. Sized now to overshoot by a few percent:
+        # comfortably outside the 2.5% spec band, which is what makes the episode
+        # off-spec and worth advising on, while staying a physical excursion rather
+        # than a divergence.
+        fx.kp_bw_scale *= float(rng.uniform(1.5, 2.2))
+        fx.ti_bw_scale *= float(rng.uniform(0.55, 0.78))
+        fx.bw_lead_scale *= float(rng.uniform(0.65, 0.85))
     elif name == "ramp_desync_filler_lead":
         # Filler ramps ahead of stock: ash arrives early, the extra filler mass
         # drags basis weight, and the stock loop chases it a delay too late. The

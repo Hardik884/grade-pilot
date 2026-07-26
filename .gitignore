@@ -1,6 +1,9 @@
 data/episodes/
 data/*.db
 data/*.parquet
+# Deterministic output of src.sim.grades.write_grades_json, rewritten by every
+# generate run. Regenerate rather than track it.
+data/grades.json
 docs/screenshots/
 __pycache__/
 .venv/
