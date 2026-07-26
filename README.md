@@ -16,7 +16,7 @@ controller and never writes a setpoint — it advises.
 |---|---|---|---|
 | Naive (current deviation > 1.5%) | 0.650 | 0.750 | **0.130** |
 | Physics only | 0.700 | 0.778 | **0.304** |
-| **Gray-box (physics + residual)** | 0.767 | 0.667 | **0.783** |
+| **Gray-box (physics + residual)** | 0.783 | 0.692 | **0.783** |
 
 Judged from the first 90 seconds of each transition, on a 60-episode held-out test set.
 
@@ -28,7 +28,8 @@ deviation is reacting to a sheet that no longer exists. GCI runs the mass balanc
 reports it. The breach is not extrapolated; it is already committed to the sheet.
 
 Physics carries 67% of the answer and the learned residual 33%, which is the intended
-split — see [docs/RESULTS.md](docs/RESULTS.md) for the full numbers and
+split — see [docs/RESULTS.md](docs/RESULTS.md) for the full numbers, the two tuning
+experiments that were tried and rejected, and
 [docs/LIMITATIONS.md](docs/LIMITATIONS.md) for what this does not establish.
 
 ## What it looks like

@@ -346,6 +346,27 @@ def episode_features(
     row["nominal_speed_to"] = nom_to
     row["d_nominal_speed"] = nom_to - nom_from
 
+    # --- alarm history inside the window.
+    # The QCS alarm tags are site data the operator already has on screen, and they carry
+    # information the basis-weight trace does not: MOIST_DEV and ASH_DEV are the *other*
+    # quality loops complaining, which is often how a desynchronised ramp announces itself
+    # before basis weight moves. Classified by prefix rather than by exact tag so a new
+    # alarm on an existing loop does not silently drop out of the features.
+    #
+    # ``op_action`` is deliberately not featurised: inside the 90 s window it is
+    # "grade_change_start" on every episode, a zero-variance constant. The genuine
+    # interventions land after the window and are therefore not available at decision
+    # time. A constant column would add nothing but the appearance of using the field.
+    tags = w["alarm"].astype("object").fillna("").astype(str)
+    n = max(len(tags), 1)
+    row["alarm_frac"] = float((tags != "").sum() / n)
+    row["alarm_bw_frac"] = float(tags.str.startswith("BW_").sum() / n)
+    row["alarm_quality_frac"] = float(
+        (tags.str.startswith("MOIST_") | tags.str.startswith("ASH_")).sum() / n
+    )
+    row["alarm_high_any"] = float((tags == "BW_DEV_HIGH").any())
+    row["alarm_n_distinct"] = float(tags[tags != ""].nunique())
+
     # --- lag decomposition
     row["transport_lag_sec"] = lag["transport_sec"]
     row["scanner_lag_sec"] = lag["scanner_sec"]

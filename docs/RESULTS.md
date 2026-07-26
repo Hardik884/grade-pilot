@@ -16,11 +16,11 @@ leakage.
 |---|---|---|---|---|---|---|---|
 | Naive (current deviation > 1.5%) | 0.650 | 0.750 | 0.130 | 3 | 1 | 20 | 36 |
 | Physics only | 0.700 | 0.778 | 0.304 | 7 | 2 | 16 | 35 |
-| **Gray-box (physics + residual)** | 0.767 | 0.667 | 0.783 | 18 | 9 | 5 | 28 |
+| **Gray-box (physics + residual)** | 0.783 | 0.692 | 0.783 | 18 | 8 | 5 | 29 |
 
 Thresholds calibrated on train: gray-box 2.45%, physics-only 2.75%.
 
-Max-deviation MAE: physics-only 1.163%, gray-box 0.939%.
+Max-deviation MAE: physics-only 1.163%, gray-box 0.910%.
 
 ### Why recall is the metric that matters
 
@@ -51,8 +51,8 @@ absorbing what 90 s of data cannot identify: the per-episode wet-end time consta
 moisture coupling into the QCS total-weight reading, and controller behaviour through the
 settle.
 
-The contribution split is **67% physics / 33% learned residual**, with physics mean
-absolute deviation 1.966% against a mean correction of 1.012%. This is checked
+The contribution split is **67.4% physics / 32.6% learned residual**, with physics mean
+absolute deviation 1.966% against a mean correction of 0.999%. This is checked
 programmatically on every run: if the learned term ever exceeds 40% of the answer, the
 report prints `MODEL IS DOING TOO MUCH - check physics path` rather than quietly
 reporting a good score. Residual mean absolute error is 1.097% with standard deviation
@@ -156,9 +156,10 @@ Recorded because a negative result is still a result.
 
 **Residual model hyperparameter sweep.** A 27-point grid over `n_estimators`
 {100, 200, 400} × `max_depth` {2, 3, 4} × `learning_rate` {0.03, 0.05, 0.1}, on the same
-80/20 split. The best cell (200 / 2 / 0.10) appeared to beat the shipped configuration
-(200 / 3 / 0.05) on all three metrics: accuracy 0.817 vs 0.767, precision 0.731 vs 0.667,
-recall 0.826 vs 0.783.
+80/20 split. Run before the alarm features below were added, so the comparison is against
+the then-current feature set. The best cell (200 / 2 / 0.10) appeared to beat the shipped
+configuration (200 / 3 / 0.05) on all three metrics: accuracy 0.817 vs 0.767, precision
+0.731 vs 0.667, recall 0.826 vs 0.783.
 
 Repeating both configurations across 15 different split seeds showed this was an artefact
 of selecting on one test split. Averaged over 15 splits the "winner" is **worse**: mean
@@ -171,4 +172,29 @@ from 0.800 to 0.945, but mean test precision fell to 0.503, and test precision l
 below the 0.6 floor in **15 of 15 splits** — the constraint held on train and did not
 survive out of sample. Rejected.
 
-Both experiments were run out-of-tree; `src/analysis/predictor.py` was never modified.
+Both experiments were run out-of-tree; the residual model's hyperparameters and decision
+rule are unchanged.
+
+**Alarm history as a feature — kept, but it earns nothing here.** Five features were
+added from the QCS alarm tags inside the 90 s window: overall alarm fraction, basis-weight
+alarm fraction, other-quality (`MOIST_DEV`/`ASH_DEV`) fraction, whether `BW_DEV_HIGH` ever
+fired, and the count of distinct tags. On the seed-42 split they appear to help — accuracy
+0.767 → 0.783, precision 0.667 → 0.692, MAE 0.939% → 0.910%, recall unchanged.
+
+Across 15 splits that gain evaporates: recall delta **+0.0001** (better on 3, worse on 3,
+tied on 9), precision −0.006, accuracy −0.004. It is the same single-split artefact as the
+hyperparameter sweep above.
+
+The reason is structural rather than disappointing. In this simulator alarm tags are
+*derived from* the very deviations the model already has —
+[`src/sim/episode.py`](../src/sim/episode.py) sets `BW_DEV_WARN` by thresholding `bw_dev`
+— so they carry no information the deviation features do not. On a real machine, alarm
+history also contains equipment trips, scanner diagnostics and process alarms that no
+basis-weight trace implies, and the redundancy would not hold. The features are kept
+because the ingestion path is real and correct, not because they improved this result.
+
+**Operator actions were deliberately *not* featurised.** Inside the 90 s decision window
+`op_action` is `grade_change_start` on all 300 episodes — a zero-variance constant. The
+genuine interventions (`manual_stock_bias_up`/`down`, 32 across the dataset) all occur
+after the window and so are unavailable at decision time. Adding the column would have
+produced the appearance of using operator history without any of the substance.
